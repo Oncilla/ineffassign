@@ -12,9 +12,17 @@ import (
 	"strings"
 )
 
-const invalidArgumentExitCode = 3
+const (
+	invalidArgumentExitCode = iota + 3
+	invalidExcludeExitCode
+)
 
-var dontRecurseFlag = flag.Bool("n", false, "don't recursively check paths")
+var (
+	dontRecurseFlag = flag.Bool("n", false, "don't recursively check paths")
+	excludeFile     = flag.String("exclude", "", "file containing all excluded paths")
+
+	exclude Exclude
+)
 
 func main() {
 	flag.Parse()
@@ -22,6 +30,13 @@ func main() {
 	if len(flag.Args()) == 0 {
 		fmt.Println("missing argument: filepath")
 		os.Exit(invalidArgumentExitCode)
+	}
+
+	if *excludeFile != "" {
+		if err := exclude.LoadFromFile(*excludeFile); err != nil {
+			fmt.Printf("invalid exclude file: %s\n", err)
+			os.Exit(invalidExcludeExitCode)
+		}
 	}
 
 	lintFailed := false
@@ -50,12 +65,13 @@ func walkPath(root string) bool {
 		if fi.IsDir() {
 			if path != root && (*dontRecurseFlag ||
 				filepath.Base(path) == "testdata" ||
-				filepath.Base(path) == "vendor") {
+				filepath.Base(path) == "vendor") ||
+				exclude.Excluded(path) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") {
+		if !strings.HasSuffix(path, ".go") || exclude.Excluded(path) {
 			return nil
 		}
 		fset, _, ineff := checkPath(path)
